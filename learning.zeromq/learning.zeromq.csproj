@@ -1,0 +1,144 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{5DB5B002-6C4F-43CA-BD87-7BC473C422C7}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>learning.zeromq</RootNamespace>
+    <AssemblyName>learning.zeromq</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject>learning.zeromq.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="clrzmq">
+      <HintPath>lib\clrzmq.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>packages\Newtonsoft.Json.5.0.8\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ActivityTask.cs" />
+    <Compile Include="TaskStorage.cs" />
+    <Compile Include="examples\asyncsrv.cs" />
+    <Compile Include="examples\clonecli1.cs" />
+    <Compile Include="examples\clonesrv1.cs" />
+    <Compile Include="examples\hwclient.cs" />
+    <Compile Include="examples\hwserver.cs" />
+    <Compile Include="examples\identity.cs" />
+    <Compile Include="examples\interrupt.cs" />
+    <Compile Include="examples\kvsimple.cs" />
+    <Compile Include="examples\lbbroker.cs" />
+    <Compile Include="examples\lbbroker2.cs" />
+    <Compile Include="examples\lpclient.cs" />
+    <Compile Include="examples\lpserver.cs" />
+    <Compile Include="examples\msgqueue.cs" />
+    <Compile Include="examples\mspoller.cs" />
+    <Compile Include="examples\msreader.cs" />
+    <Compile Include="examples\mtrelay.cs" />
+    <Compile Include="examples\mtserver.cs" />
+    <Compile Include="examples\peering1.cs" />
+    <Compile Include="examples\peering2.cs" />
+    <Compile Include="examples\ppqueue.cs" />
+    <Compile Include="examples\ppworker.cs" />
+    <Compile Include="examples\psenvpub.cs" />
+    <Compile Include="examples\psenvsub.cs" />
+    <Compile Include="examples\rrbroker.cs" />
+    <Compile Include="examples\rrclient.cs" />
+    <Compile Include="examples\rrworker.cs" />
+    <Compile Include="examples\rtdealer.cs" />
+    <Compile Include="examples\rtreq.cs" />
+    <Compile Include="examples\spqueue.cs" />
+    <Compile Include="examples\spworker.cs" />
+    <Compile Include="examples\syncpub.cs" />
+    <Compile Include="examples\syncsub.cs" />
+    <Compile Include="examples\tasksink.cs" />
+    <Compile Include="examples\tasksink2.cs" />
+    <Compile Include="examples\taskvent.cs" />
+    <Compile Include="examples\taskwork.cs" />
+    <Compile Include="examples\taskwork2.cs" />
+    <Compile Include="examples\taskworker.cs" />
+    <Compile Include="examples\taskworker2.cs" />
+    <Compile Include="examples\version.cs" />
+    <Compile Include="examples\wuclient.cs" />
+    <Compile Include="examples\wuproxy.cs" />
+    <Compile Include="examples\wuserver.cs" />
+    <Compile Include="examples\ZHelpers.cs" />
+    <Compile Include="examples\zmsg.cs" />
+    <Compile Include="MyTask.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TaskQueue.cs" />
+    <Compile Include="WorkflowActivity.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <None Include="examples\taskvent.cs.v1" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <Content Include="activity_q\completed\place_holder.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="activity_q\orphaned\place_holder.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="activity_q\faulted\place_holder.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="lib\clrzmq.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="lib\libzmq.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="activity_q\place_holder.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>copy /Y $(SolutionDir)\lib\libzmq.dll $(SolutionDir)\$(OutDir)</PostBuildEvent>
+  </PropertyGroup>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
