@@ -37,8 +37,8 @@ namespace learning.zeromq
         }
 
 
-        private const string ACTIVITY_FILENAME_FORMAT = @"activity_q\{0}.json";
-        private const string ARCHIVED_ACTIVITY_FILENAME_FORMAT = @"activity_q\{0}\{1}.json";
+        protected const string ACTIVITY_FILENAME_FORMAT = @"activity_q\{0}.json";
+        protected const string ARCHIVED_ACTIVITY_FILENAME_FORMAT = @"activity_q\{0}\{1}.json";
 
         public string[] GetPending()
         {
@@ -90,7 +90,7 @@ namespace learning.zeromq
             }
         }
 
-        public void SetCompleted(string activityId, CompletionTag tag)
+        public virtual void SetCompleted(string activityId, CompletionTag tag)
         {
             var activityFile = string.Format(ACTIVITY_FILENAME_FORMAT, activityId);
 
@@ -100,5 +100,64 @@ namespace learning.zeromq
             }
         }
 
+    }
+
+    public class TaskStorageOnFileSystem_PurgeCompleted : TaskStorageOnFileSystem
+    {
+        public override void SetCompleted(string activityId, CompletionTag tag)
+        {
+            var activityFile = string.Format(ACTIVITY_FILENAME_FORMAT, activityId);
+
+            if (File.Exists(activityFile))
+            {
+                File.Delete(activityFile);
+            }
+        }
+    }
+    /// <summary>
+    /// 
+    /// </summary>
+    public class InMemoryStorage : ITaskStorage
+    {
+        private Dictionary<string, IPersistedTask> _taskMap;
+        private object _lock;
+
+        public InMemoryStorage()
+        {
+            _lock = new object();
+            _taskMap = new Dictionary<string, IPersistedTask>();
+        }
+
+        public void HydrateActivity(IPersistedTask activity)
+        {
+            lock (_lock)
+            {
+                _taskMap[activity.TaskId] = activity;
+            }
+        }
+
+        public IPersistedTask DehydrateActivity(string activityId)
+        {
+            lock (_lock)
+            {
+                return _taskMap[activityId];
+            }
+        }
+
+        public void SetCompleted(string activityId, CompletionTag tag)
+        {
+            lock (_lock)
+            {
+                if (_taskMap.ContainsKey(activityId))
+                {
+                    _taskMap.Remove(activityId);
+                }
+            }
+        }
+
+        public string[] GetPending()
+        {
+            return new string[] { };
+        }
     }
 }

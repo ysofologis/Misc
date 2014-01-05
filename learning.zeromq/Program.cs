@@ -10,11 +10,14 @@ namespace learning.zeromq
 {
     class Program
     {
+        private const int ITERATIONS = 100;
+        private const int QUEUE_THREADS = 5;
+
         static void Main(string[] args)
         {
             // zguide.asycnsrv.Program.Main(args);
 
-            TaskQueue q = new TaskQueue();
+            TaskQueue q = new TaskQueue(QUEUE_THREADS);
 
             int exec_count = 0;
 
@@ -34,7 +37,10 @@ namespace learning.zeromq
 
             q.Start();
 
-            for (int ix = 0; ix < 5000; ix++)
+            Stopwatch startTime = new Stopwatch();
+            startTime.Start();
+
+            for (int ix = 0; ix < ITERATIONS; ix++)
             {
                 q.ExecuteActivity(new DoAdd(10, 20));
                 q.ExecuteActivity(new DoSubtract(10, 20));
@@ -51,7 +57,14 @@ namespace learning.zeromq
                 Thread.Sleep(100);
             }
 
+            startTime.Stop();
+            var millisecsElapsed = (int) startTime.ElapsedMilliseconds;
+
+            Console.WriteLine(string.Format("{0} tasks completed in {1} millisecs using {2} threads", ITERATIONS * 6, millisecsElapsed, QUEUE_THREADS));
+
             q.Shutdown();
+
+            Console.ReadKey();
 
         }
     }

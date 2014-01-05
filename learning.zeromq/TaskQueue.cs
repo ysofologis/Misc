@@ -23,37 +23,81 @@ namespace learning.zeromq
     /// </summary>
     public class TaskQueue
     {
+        protected class AtomicCounter
+        {
+            private long _value;
+
+            public long Value
+            {
+                get
+                {
+                    return Interlocked.Read(ref _value);
+                }
+            }
+
+            public long Increase()
+            {
+                return Interlocked.Increment(ref _value);
+            }
+
+            public long Decrease()
+            {
+                return Interlocked.Decrement(ref _value);
+            }
+
+            public static AtomicCounter operator ++(AtomicCounter c)
+            {
+                c.Increase();
+
+                return c;
+            }
+
+            public static AtomicCounter operator --(AtomicCounter c)
+            {
+                c.Decrease();
+
+                return c;
+            }
+
+            public static implicit operator long(AtomicCounter c)
+            {
+                return c.Value;
+            }
+        }
 
         private const string ACTIVITY_Q_ADDRESS = "inproc://activity_q";
         private const int ACTIVITY_THREADS = 50;
 
         public static readonly Encoding MessageEncoding = Encoding.UTF8;
 
-        protected ZmqContext    _queueContext;
-        protected ZmqSocket     _backendChannel;
+        protected ZmqContext _queueContext;
+        protected ZmqSocket _backendChannel;
 
-        protected object            _lock;
-        protected List<Thread>      _runningThreads;
-        protected ManualResetEvent  _keepRunning;
-        protected Random            _randomizer;
-        protected int               _next_topic;
-        protected volatile int      _active_tasks;
+        protected object _lock;
+        protected List<Task> _runningThreads;
+        protected int _threadCount;
+        protected ManualResetEvent _keepRunning;
+        protected Random _randomizer;
+        protected int _next_topic;
+        protected AtomicCounter _active_tasks;
 
         public event Action<TaskQueue, IPersistedTask> ActivityExecuted;
 
-        public TaskQueue()
+        public TaskQueue(int queueThreads = ACTIVITY_THREADS)
         {
             _lock = new object();
+            _threadCount = queueThreads;
             _randomizer = new Random(DateTime.Now.Millisecond);
-            _runningThreads = new List<Thread>();
+            _runningThreads = new List<Task>();
             _keepRunning = new ManualResetEvent(false);
             _next_topic = 1;
-            _active_tasks = 0;
+            _active_tasks = new AtomicCounter();
 
-            this.Storage = new TaskStorageOnFileSystem();
+            this.Storage = new TaskStorageOnFileSystem_PurgeCompleted();
+            // this.Storage = new InMemoryStorage();
         }
 
-        public int ActiveTasks
+        public long ActiveTasks
         {
             get
             {
@@ -76,9 +120,12 @@ namespace learning.zeromq
 
                     GetBackend();
 
-                    for (int ix = 0; ix < ACTIVITY_THREADS; ix++)
+                    for (int ix = 0; ix < _threadCount; ix++)
                     {
-                        var newThread = new Thread(this.ExecutorThread);
+                        var newThread = new Task(() =>
+                        {
+                            ExecutorThread(_queueContext);
+                        });
 
                         _runningThreads.Add(newThread);
                     }
@@ -87,7 +134,7 @@ namespace learning.zeromq
 
                     foreach (var t in _runningThreads)
                     {
-                        t.Start(_queueContext);
+                        t.Start();
                     }
                 }
             }
@@ -106,7 +153,7 @@ namespace learning.zeromq
 
                     foreach (var t in _runningThreads)
                     {
-                        t.Join();
+                        t.Wait();
                     }
 
                     _runningThreads.Clear();
@@ -135,30 +182,31 @@ namespace learning.zeromq
 
         public void ExecuteActivity(IPersistedTask activity)
         {
+            var message = "";
+
             lock (_lock)
             {
-                string activityId = activity.TaskId;
-
-                this.Storage.HydrateActivity(activity);
-
                 _next_topic++;
 
-                if (_next_topic> _runningThreads.Count)
+                if (_next_topic > _runningThreads.Count)
                 {
                     _next_topic = 1;
                 }
 
-                string message = string.Format("{0:D4} {1}", _next_topic, activityId);
-
-                _active_tasks++;
-
-                var status = GetBackend().Send(message, MessageEncoding);
+                message = string.Format("{0:D4} {1}", _next_topic, activity.TaskId);
             }
+
+
+            this.Storage.HydrateActivity(activity);
+
+            _active_tasks++;
+
+            var status = GetBackend().Send(message, MessageEncoding);
         }
 
         protected void ExecutorThread(object context)
         {
-            int threadIndex = _runningThreads.IndexOf( _runningThreads.Where(x => x.ManagedThreadId == Thread.CurrentThread.ManagedThreadId).Single() );
+            int threadIndex = _runningThreads.IndexOf(_runningThreads.Where(x => x.Id == Task.CurrentId).Single());
             string subscriberTopic = string.Format("{0:D4}", threadIndex + 1);
 
             using (ZmqSocket worker = ((ZmqContext)context).CreateSocket(SocketType.SUB))
@@ -173,21 +221,23 @@ namespace learning.zeromq
 
                 var poller = new Poller(new List<ZmqSocket> { worker });
 
-                while ( ! _keepRunning.WaitOne(1) )
+                while (!_keepRunning.WaitOne(5))
                 {
-                    var messageSize = poller.Poll( TimeSpan.FromMilliseconds(10) );
+                    var messageSize = poller.Poll(TimeSpan.FromMilliseconds(1));
                 }
             }
         }
 
         private void ProcessRequest(ZmqSocket socket)
         {
-            var activityId = socket.Receive(MessageEncoding);
-
-            activityId = activityId.Substring(activityId.IndexOf(" ") + 1);
+            var activityId = string.Empty;
 
             try
             {
+                activityId = socket.Receive(MessageEncoding);
+
+                activityId = activityId.Substring(activityId.IndexOf(" ") + 1);
+
                 var activity = this.Storage.DehydrateActivity(activityId);
 
                 activity.Execute();
@@ -206,8 +256,10 @@ namespace learning.zeromq
 
                 Debug.WriteLine(x);
             }
-
-            _active_tasks--;
+            finally
+            {
+                _active_tasks--;
+            }
         }
     }
 }
