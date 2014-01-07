@@ -20,23 +20,24 @@ namespace learning.zeromq
     /// </summary>
     public interface ITaskStorage
     {
-        void HydrateActivity(IPersistedTask activity);
-        IPersistedTask DehydrateActivity(string activityId);
+        string HydrateTask(IPersistedTask activity);
+        IPersistedTask DehydrateTask(string taskContent);
         void SetCompleted(string activityId, CompletionTag tag);
         string[] GetPending();
     }
     /// <summary>
     /// 
     /// </summary>
+    internal class TaskBag
+    {
+        public string Type { get; set; }
+        public JObject Instance { get; set; }
+    }
+    /// <summary>
+    /// 
+    /// </summary>
     public class TaskStorageOnFileSystem : ITaskStorage
     {
-        protected class TaskBag
-        {
-            public string Type { get; set; }
-            public JObject Instance { get; set; }
-        }
-
-
         protected const string ACTIVITY_FILENAME_FORMAT = @"activity_q\{0}.json";
         protected const string ARCHIVED_ACTIVITY_FILENAME_FORMAT = @"activity_q\{0}\{1}.json";
 
@@ -54,7 +55,7 @@ namespace learning.zeromq
             return r.ToArray();
         }
 
-        public void HydrateActivity(IPersistedTask activity)
+        public string HydrateTask(IPersistedTask activity)
         {
             using (var fstream = new FileStream(string.Format(ACTIVITY_FILENAME_FORMAT, activity.TaskId), FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
@@ -66,6 +67,8 @@ namespace learning.zeromq
                 {
                     writer.Write(r);
                 }
+
+                return r;
             }
         }
         /// <summary>
@@ -73,9 +76,11 @@ namespace learning.zeromq
         /// </summary>
         /// <param name="activityId"></param>
         /// <returns></returns>
-        public IPersistedTask DehydrateActivity(string activityId)
+        public IPersistedTask DehydrateTask(string taskContent)
         {
-            using (var fstream = new FileStream(string.Format(ACTIVITY_FILENAME_FORMAT, activityId), FileMode.Open, FileAccess.Read, FileShare.Read))
+            var taskId = taskContent;
+
+            using (var fstream = new FileStream(string.Format(ACTIVITY_FILENAME_FORMAT, taskId), FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 using (var reader = new StreamReader(fstream))
                 {
@@ -128,15 +133,17 @@ namespace learning.zeromq
             _taskMap = new Dictionary<string, IPersistedTask>();
         }
 
-        public void HydrateActivity(IPersistedTask activity)
+        public string HydrateTask(IPersistedTask activity)
         {
             lock (_lock)
             {
                 _taskMap[activity.TaskId] = activity;
+
+                return activity.TaskId;
             }
         }
 
-        public IPersistedTask DehydrateActivity(string activityId)
+        public IPersistedTask DehydrateTask(string activityId)
         {
             lock (_lock)
             {
@@ -153,6 +160,43 @@ namespace learning.zeromq
                     _taskMap.Remove(activityId);
                 }
             }
+        }
+
+        public string[] GetPending()
+        {
+            return new string[] { };
+        }
+    }
+    /// <summary>
+    /// 
+    /// </summary>
+    public class OnTheFlyStorage : ITaskStorage
+    {
+        public string HydrateTask(IPersistedTask activity)
+        {
+            var activityState = JObject.FromObject(activity);
+
+            var r = JsonConvert.SerializeObject(new TaskBag() { Instance = activityState, Type = activity.GetType().AssemblyQualifiedName }, Formatting.Indented);
+
+            r = Convert.ToBase64String( Encoding.UTF8.GetBytes(r) );
+
+            return r;
+        }
+
+        public IPersistedTask DehydrateTask(string taskContent)
+        {
+            var taskStream = Encoding.UTF8.GetString( Convert.FromBase64String(taskContent) );
+
+            var bag = JsonConvert.DeserializeObject<TaskBag>(taskStream);
+
+            var task = (IPersistedTask)JsonConvert.DeserializeObject(bag.Instance.ToString(), Type.GetType(bag.Type, true));
+
+            return task;
+        }
+
+        public void SetCompleted(string activityId, CompletionTag tag)
+        {
+            
         }
 
         public string[] GetPending()

@@ -10,8 +10,8 @@ namespace learning.zeromq
 {
     class Program
     {
-        private const int ITERATIONS = 100;
-        private const int QUEUE_THREADS = 5;
+        private const int ITERATIONS = 1000;
+        private const int QUEUE_THREADS = 50;
 
         static void Main(string[] args)
         {
@@ -27,10 +27,18 @@ namespace learning.zeromq
 
                     var threadId = Thread.CurrentThread.ManagedThreadId;
 
-                    var line = string.Format( "{0:D4} >>> thread: {1},  Executed --> {2}: '{3}' ", count, threadId, a.TaskId, a.GetType().Name );
+                    var line = string.Format("Active: {0:D4}, Executed: {1:D4} >>> thread: {2},  Task --> {3}: '{4}' ", q.ActiveTasks,  count, threadId, a.TaskId, a.GetType().Name);
 
-                    // Debug.WriteLine(line);
+                    Debug.WriteLine(line);
+                    Console.WriteLine(line);
 
+                };
+
+            q.WorkerStarted += (s, topic) =>
+                {
+                    var line = string.Format("queue worker ({0}) activated.", topic);
+
+                    Debug.WriteLine(line);
                     Console.WriteLine(line);
 
                 };
@@ -42,13 +50,13 @@ namespace learning.zeromq
 
             for (int ix = 0; ix < ITERATIONS; ix++)
             {
-                q.ExecuteActivity(new DoAdd(10, 20));
-                q.ExecuteActivity(new DoSubtract(10, 20));
-                q.ExecuteActivity(new DoMultiplie(10, 20));
-                q.ExecuteActivity(new DoDivide(10, 20));
+                q.ExecuteTask(new DoAdd(10, 20));
+                q.ExecuteTask(new DoSubtract(10, 20));
+                q.ExecuteTask(new DoMultiplie(10, 20));
+                q.ExecuteTask(new DoDivide(10, 20));
 
-                q.ExecuteActivity(new ActivityTask() { Activity = new ActivityAdd(10, 30) });
-                q.ExecuteActivity(new ActivityTask() { Activity = new ActivityDivide(10, 20) });
+                q.ExecuteTask(new ActivityTask() { Activity = new ActivityAdd(10, 30) });
+                q.ExecuteTask(new ActivityTask() { Activity = new ActivityDivide(10, 20) });
 
             }
 

@@ -23,6 +23,17 @@ namespace learning.zeromq
     /// </summary>
     public class TaskQueue
     {
+        protected class WorkerContext
+        {
+            public WorkerContext()
+            {
+                this.NotifyStart = new ManualResetEvent(false);
+            }
+
+            public ZmqContext QueueContext { get; set; }
+            public ManualResetEvent NotifyStart { get; protected set; }
+        }
+
         protected class AtomicCounter
         {
             private long _value;
@@ -31,20 +42,30 @@ namespace learning.zeromq
             {
                 get
                 {
-                    return Interlocked.Read(ref _value);
+                    lock (this)
+                    {
+                        return _value;
+                    }
                 }
             }
 
             public long Increase()
             {
-                return Interlocked.Increment(ref _value);
+                lock (this)
+                {
+                    return _value ++;
+                }
             }
 
             public long Decrease()
             {
-                return Interlocked.Decrement(ref _value);
+                lock (this)
+                {
+                    return _value--;
+                }
             }
 
+            /*
             public static AtomicCounter operator ++(AtomicCounter c)
             {
                 c.Increase();
@@ -52,16 +73,23 @@ namespace learning.zeromq
                 return c;
             }
 
+            
             public static AtomicCounter operator --(AtomicCounter c)
             {
                 c.Decrease();
 
                 return c;
             }
+            */
 
             public static implicit operator long(AtomicCounter c)
             {
                 return c.Value;
+            }
+
+            public override string ToString()
+            {
+                return this.Value.ToString();
             }
         }
 
@@ -82,6 +110,7 @@ namespace learning.zeromq
         protected AtomicCounter _active_tasks;
 
         public event Action<TaskQueue, IPersistedTask> ActivityExecuted;
+        public event Action<TaskQueue, string> WorkerStarted;
 
         public TaskQueue(int queueThreads = ACTIVITY_THREADS)
         {
@@ -93,8 +122,9 @@ namespace learning.zeromq
             _next_topic = 1;
             _active_tasks = new AtomicCounter();
 
-            this.Storage = new TaskStorageOnFileSystem_PurgeCompleted();
+            // this.Storage = new TaskStorageOnFileSystem_PurgeCompleted();
             // this.Storage = new InMemoryStorage();
+            this.Storage = new OnTheFlyStorage();
         }
 
         public long ActiveTasks
@@ -120,13 +150,18 @@ namespace learning.zeromq
 
                     GetBackend();
 
+                    List<WorkerContext> workerContexts = new List<WorkerContext>();
+
                     for (int ix = 0; ix < _threadCount; ix++)
                     {
+                        var w = new WorkerContext() { QueueContext = _queueContext };
+
                         var newThread = new Task(() =>
                         {
-                            ExecutorThread(_queueContext);
+                            WorkerThread(w);
                         });
 
+                        workerContexts.Add(w);
                         _runningThreads.Add(newThread);
                     }
 
@@ -135,6 +170,11 @@ namespace learning.zeromq
                     foreach (var t in _runningThreads)
                     {
                         t.Start();
+                    }
+
+                    foreach (var w in workerContexts)
+                    {
+                        w.NotifyStart.WaitOne();
                     }
                 }
             }
@@ -180,39 +220,49 @@ namespace learning.zeromq
 
         }
 
-        public void ExecuteActivity(IPersistedTask activity)
+        public void ExecuteTask(IPersistedTask task)
         {
             var message = "";
+            var message_topic = 0;
 
             lock (_lock)
             {
                 _next_topic++;
 
-                if (_next_topic > _runningThreads.Count)
+                if (_next_topic > _runningThreads.Count || _next_topic < 1)
                 {
                     _next_topic = 1;
                 }
 
-                message = string.Format("{0:D4} {1}", _next_topic, activity.TaskId);
+                message_topic = _next_topic;
             }
 
 
-            this.Storage.HydrateActivity(activity);
+            var taskContent = this.Storage.HydrateTask(task);
+            
+            message = string.Format("{0:D4} {1}", message_topic, taskContent);
 
-            _active_tasks++;
+            _active_tasks.Increase();
 
             var status = GetBackend().Send(message, MessageEncoding);
         }
 
-        protected void ExecutorThread(object context)
+        protected void WorkerThread(WorkerContext workerContext)
         {
             int threadIndex = _runningThreads.IndexOf(_runningThreads.Where(x => x.Id == Task.CurrentId).Single());
             string subscriberTopic = string.Format("{0:D4}", threadIndex + 1);
 
-            using (ZmqSocket worker = ((ZmqContext)context).CreateSocket(SocketType.SUB))
+            using (ZmqSocket worker = ((ZmqContext)workerContext.QueueContext).CreateSocket(SocketType.SUB))
             {
                 worker.Connect(ACTIVITY_Q_ADDRESS);
                 worker.Subscribe(MessageEncoding.GetBytes(subscriberTopic));
+
+                workerContext.NotifyStart.Set();
+
+                if (this.WorkerStarted != null)
+                {
+                    this.WorkerStarted(this, subscriberTopic);
+                }
 
                 worker.ReceiveReady += (s, e) =>
                     {
@@ -221,28 +271,30 @@ namespace learning.zeromq
 
                 var poller = new Poller(new List<ZmqSocket> { worker });
 
-                while (!_keepRunning.WaitOne(5))
+                while (!_keepRunning.WaitOne(1))
                 {
-                    var messageSize = poller.Poll(TimeSpan.FromMilliseconds(1));
+                    var messageSize = poller.Poll(TimeSpan.FromMilliseconds(5));
                 }
             }
+
+            workerContext.NotifyStart.Dispose();
         }
 
         private void ProcessRequest(ZmqSocket socket)
         {
-            var activityId = string.Empty;
+            var taskId = string.Empty;
 
             try
             {
-                activityId = socket.Receive(MessageEncoding);
+                taskId = socket.Receive(MessageEncoding);
 
-                activityId = activityId.Substring(activityId.IndexOf(" ") + 1);
+                taskId = taskId.Substring(taskId.IndexOf(" ") + 1);
 
-                var activity = this.Storage.DehydrateActivity(activityId);
+                var activity = this.Storage.DehydrateTask(taskId);
 
                 activity.Execute();
 
-                this.Storage.SetCompleted(activityId, CompletionTag.completed);
+                this.Storage.SetCompleted(taskId, CompletionTag.completed);
 
                 if (this.ActivityExecuted != null)
                 {
@@ -252,13 +304,13 @@ namespace learning.zeromq
             }
             catch (Exception x)
             {
-                this.Storage.SetCompleted(activityId, CompletionTag.faulted);
+                this.Storage.SetCompleted(taskId, CompletionTag.faulted);
 
                 Debug.WriteLine(x);
             }
             finally
             {
-                _active_tasks--;
+                _active_tasks.Decrease();
             }
         }
     }
