@@ -102,7 +102,7 @@ namespace learning.zeromq
         protected ZmqSocket _backendChannel;
 
         protected object _lock;
-        protected List<Task> _runningThreads;
+        protected List<Thread> _runningThreads;
         protected int _threadCount;
         protected ManualResetEvent _keepRunning;
         protected Random _randomizer;
@@ -117,7 +117,7 @@ namespace learning.zeromq
             _lock = new object();
             _threadCount = queueThreads;
             _randomizer = new Random(DateTime.Now.Millisecond);
-            _runningThreads = new List<Task>();
+            _runningThreads = new List<Thread>();
             _keepRunning = new ManualResetEvent(false);
             _next_topic = 1;
             _active_tasks = new AtomicCounter();
@@ -156,7 +156,14 @@ namespace learning.zeromq
                     {
                         var w = new WorkerContext() { QueueContext = _queueContext };
 
+                        /*
                         var newThread = new Task(() =>
+                        {
+                            WorkerThread(w);
+                        });
+                         * */
+
+                        var newThread = new Thread(() =>
                         {
                             WorkerThread(w);
                         });
@@ -193,7 +200,7 @@ namespace learning.zeromq
 
                     foreach (var t in _runningThreads)
                     {
-                        t.Wait();
+                        t.Join();
                     }
 
                     _runningThreads.Clear();
@@ -247,9 +254,15 @@ namespace learning.zeromq
             var status = GetBackend().Send(message, MessageEncoding);
         }
 
+        protected void ForwarderThread()
+        {
+
+        }
+
         protected void WorkerThread(WorkerContext workerContext)
         {
-            int threadIndex = _runningThreads.IndexOf(_runningThreads.Where(x => x.Id == Task.CurrentId).Single());
+            int threadIndex = _runningThreads.IndexOf(_runningThreads.Where(x => x.ManagedThreadId == Thread.CurrentThread.ManagedThreadId).Single());
+
             string subscriberTopic = string.Format("{0:D4}", threadIndex + 1);
 
             using (ZmqSocket worker = ((ZmqContext)workerContext.QueueContext).CreateSocket(SocketType.SUB))

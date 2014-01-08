@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace learning.zeromq
@@ -44,6 +45,8 @@ namespace learning.zeromq
 
     public abstract class ArithmeticOperationTask : MyTask
     {
+        protected static readonly Random _randomizer = new Random();
+
         public ArithmeticOperationTask(decimal param1, decimal param2)
         {
             this.Input.Param1 = param1;
@@ -62,6 +65,8 @@ namespace learning.zeromq
         protected void SetResult(decimal v)
         {
             this.Output.Result = v;
+
+            Thread.Sleep( _randomizer.Next(10, 20) );
         }
     }
 

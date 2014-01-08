@@ -31,7 +31,6 @@ namespace learning.zeromq
 
                     Debug.WriteLine(line);
                     Console.WriteLine(line);
-
                 };
 
             q.WorkerStarted += (s, topic) =>
@@ -40,7 +39,6 @@ namespace learning.zeromq
 
                     Debug.WriteLine(line);
                     Console.WriteLine(line);
-
                 };
 
             q.Start();
@@ -57,7 +55,6 @@ namespace learning.zeromq
 
                 q.ExecuteTask(new ActivityTask() { Activity = new ActivityAdd(10, 30) });
                 q.ExecuteTask(new ActivityTask() { Activity = new ActivityDivide(10, 20) });
-
             }
 
             while (q.ActiveTasks > 0)

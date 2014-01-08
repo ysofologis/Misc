@@ -65,4 +65,20 @@ namespace learning.zeromq
             return this.GetParam1() / this.GetParam2();
         }
     }
+
+    public class CompositeActivity<ActivityT> : WorkflowActivity
+        where ActivityT : WorkflowActivity, new()
+    {
+        public ActivityT MyActivity { get; protected set; }
+
+        public CompositeActivity()
+        {
+            this.MyActivity = new ActivityT();
+        }
+
+        public override void Execute()
+        {
+            this.MyActivity.Execute();
+        }
+    }
 }
