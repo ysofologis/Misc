@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ZeroMQ;
+using ZeroMQ.Devices;
 
 
 namespace learning.zeromq
@@ -23,17 +24,6 @@ namespace learning.zeromq
     /// </summary>
     public class TaskQueue
     {
-        protected class WorkerContext
-        {
-            public WorkerContext()
-            {
-                this.NotifyStart = new ManualResetEvent(false);
-            }
-
-            public ZmqContext QueueContext { get; set; }
-            public ManualResetEvent NotifyStart { get; protected set; }
-        }
-
         protected class AtomicCounter
         {
             private long _value;
@@ -93,16 +83,31 @@ namespace learning.zeromq
             }
         }
 
-        private const string ACTIVITY_Q_ADDRESS = "inproc://activity_q";
+        protected class TaskDistributor : ForwarderDevice
+        {
+            public TaskDistributor(ZmqContext context, string frontend, string backend)
+                : base(context, frontend, backend, DeviceMode.Threaded)
+            {
+            }
+
+            public SendStatus Broadcast(byte [] data)
+            {
+                return this.BackendSocket.Send(data);
+            }
+        }
+
+        private const string WORKER_SOCKET = "inproc://activity_q";
+        private const string QUEUE_SOCKET = "tcp://*:5555";
+
         private const int ACTIVITY_THREADS = 50;
 
         public static readonly Encoding MessageEncoding = Encoding.UTF8;
 
-        protected ZmqContext _queueContext;
-        protected ZmqSocket _backendChannel;
+        protected ZmqContext        _queueContext;
+        protected TaskDistributor   _queueDevice;
 
         protected object _lock;
-        protected List<Thread> _runningThreads;
+        protected List<TaskWorker> _runningWorkers;
         protected int _threadCount;
         protected ManualResetEvent _keepRunning;
         protected Random _randomizer;
@@ -117,7 +122,7 @@ namespace learning.zeromq
             _lock = new object();
             _threadCount = queueThreads;
             _randomizer = new Random(DateTime.Now.Millisecond);
-            _runningThreads = new List<Thread>();
+            _runningWorkers = new List<TaskWorker>();
             _keepRunning = new ManualResetEvent(false);
             _next_topic = 1;
             _active_tasks = new AtomicCounter();
@@ -148,40 +153,20 @@ namespace learning.zeromq
 
                     _queueContext = ZmqContext.Create();
 
-                    GetBackend();
-
-                    List<WorkerContext> workerContexts = new List<WorkerContext>();
+                    _queueDevice = new TaskDistributor(_queueContext, QUEUE_SOCKET, WORKER_SOCKET);
+                    _queueDevice.Start();
 
                     for (int ix = 0; ix < _threadCount; ix++)
                     {
-                        var w = new WorkerContext() { QueueContext = _queueContext };
-
-                        /*
-                        var newThread = new Task(() =>
-                        {
-                            WorkerThread(w);
-                        });
-                         * */
-
-                        var newThread = new Thread(() =>
-                        {
-                            WorkerThread(w);
-                        });
-
-                        workerContexts.Add(w);
-                        _runningThreads.Add(newThread);
+                        _runningWorkers.Add(new TaskWorker(_queueContext, WorkerThread));
                     }
 
                     _keepRunning.Reset();
 
-                    foreach (var t in _runningThreads)
+                    foreach (var t in _runningWorkers)
                     {
                         t.Start();
-                    }
-
-                    foreach (var w in workerContexts)
-                    {
-                        w.NotifyStart.WaitOne();
+                        t.WaitStart();
                     }
                 }
             }
@@ -193,17 +178,17 @@ namespace learning.zeromq
             {
                 if (_queueContext != null)
                 {
-                    _backendChannel.Close();
-                    _backendChannel = null;
+                    _queueDevice.Dispose();
+                    _queueDevice.Stop();
 
                     _keepRunning.Set();
 
-                    foreach (var t in _runningThreads)
+                    foreach (var t in _runningWorkers)
                     {
                         t.Join();
                     }
 
-                    _runningThreads.Clear();
+                    _runningWorkers.Clear();
 
                     _queueContext.Dispose();
 
@@ -214,19 +199,6 @@ namespace learning.zeromq
 
         public ITaskStorage Storage { get; protected set; }
 
-        protected ZmqSocket GetBackend()
-        {
-            if (_backendChannel == null)
-            {
-                _backendChannel = _queueContext.CreateSocket(SocketType.PUB);
-
-                _backendChannel.Bind(ACTIVITY_Q_ADDRESS);
-            }
-
-            return _backendChannel;
-
-        }
-
         public void ExecuteTask(IPersistedTask task)
         {
             var message = "";
@@ -236,7 +208,7 @@ namespace learning.zeromq
             {
                 _next_topic++;
 
-                if (_next_topic > _runningThreads.Count || _next_topic < 1)
+                if (_next_topic > _runningWorkers.Count || _next_topic < 1)
                 {
                     _next_topic = 1;
                 }
@@ -251,7 +223,7 @@ namespace learning.zeromq
 
             _active_tasks.Increase();
 
-            var status = GetBackend().Send(message, MessageEncoding);
+            var status = _queueDevice.Broadcast( MessageEncoding.GetBytes(message) );
         }
 
         protected void ForwarderThread()
@@ -259,15 +231,15 @@ namespace learning.zeromq
 
         }
 
-        protected void WorkerThread(WorkerContext workerContext)
+        protected void WorkerThread(TaskWorker.WorkerContext workerContext)
         {
-            int threadIndex = _runningThreads.IndexOf(_runningThreads.Where(x => x.ManagedThreadId == Thread.CurrentThread.ManagedThreadId).Single());
+            int threadIndex = _runningWorkers.IndexOf(_runningWorkers.Where(x => x.IsCurrentThread() ).Single());
 
             string subscriberTopic = string.Format("{0:D4}", threadIndex + 1);
 
-            using (ZmqSocket worker = ((ZmqContext)workerContext.QueueContext).CreateSocket(SocketType.SUB))
+            using (ZmqSocket worker = workerContext.QueueContext.CreateSocket(SocketType.SUB))
             {
-                worker.Connect(ACTIVITY_Q_ADDRESS);
+                worker.Connect(WORKER_SOCKET);
                 worker.Subscribe(MessageEncoding.GetBytes(subscriberTopic));
 
                 workerContext.NotifyStart.Set();
@@ -295,19 +267,19 @@ namespace learning.zeromq
 
         private void ProcessRequest(ZmqSocket socket)
         {
-            var taskId = string.Empty;
+            var taskContent = string.Empty;
 
             try
             {
-                taskId = socket.Receive(MessageEncoding);
+                taskContent = socket.Receive(MessageEncoding);
 
-                taskId = taskId.Substring(taskId.IndexOf(" ") + 1);
+                taskContent = taskContent.Substring(taskContent.IndexOf(" ") + 1);
 
-                var activity = this.Storage.DehydrateTask(taskId);
+                var activity = this.Storage.DehydrateTask(taskContent);
 
                 activity.Execute();
 
-                this.Storage.SetCompleted(taskId, CompletionTag.completed);
+                this.Storage.SetCompleted(taskContent, CompletionTag.completed);
 
                 if (this.ActivityExecuted != null)
                 {
@@ -317,7 +289,7 @@ namespace learning.zeromq
             }
             catch (Exception x)
             {
-                this.Storage.SetCompleted(taskId, CompletionTag.faulted);
+                this.Storage.SetCompleted(taskContent, CompletionTag.faulted);
 
                 Debug.WriteLine(x);
             }

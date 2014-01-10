@@ -18,7 +18,6 @@ namespace zguide.mtserver
         {
             using (var context = ZmqContext.Create())
             {
-
                 using (var queue = new ZeroMQ.Devices.QueueDevice(context, "tcp://*:5555", "inproc://workers", DeviceMode.Blocking))
                 {
                     queue.Initialize();
@@ -30,7 +29,6 @@ namespace zguide.mtserver
                     }
                     queue.Start();
                 }
-
             }
         }
 
