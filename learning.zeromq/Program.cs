@@ -11,7 +11,7 @@ namespace learning.zeromq
     class Program
     {
         private const int ITERATIONS = 1000;
-        private const int QUEUE_THREADS = 75;
+        private const int QUEUE_THREADS = 40;
 
         static void Main(string[] args)
         {

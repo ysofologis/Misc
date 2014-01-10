@@ -83,7 +83,7 @@ namespace learning.zeromq
             }
         }
 
-        protected class TaskDistributor : ForwarderDevice
+        protected class TaskDistributor : StreamerDevice
         {
             public TaskDistributor(ZmqContext context, string frontend, string backend)
                 : base(context, frontend, backend, DeviceMode.Threaded)
@@ -93,6 +93,11 @@ namespace learning.zeromq
             public SendStatus Broadcast(byte [] data)
             {
                 return this.BackendSocket.Send(data);
+            }
+
+            protected override void FrontendHandler(SocketEventArgs args)
+            {
+                base.FrontendHandler(args);
             }
         }
 
@@ -237,10 +242,10 @@ namespace learning.zeromq
 
             string subscriberTopic = string.Format("{0:D4}", threadIndex + 1);
 
-            using (ZmqSocket worker = workerContext.QueueContext.CreateSocket(SocketType.SUB))
+            using (ZmqSocket worker = workerContext.QueueContext.CreateSocket(SocketType.PULL))
             {
                 worker.Connect(WORKER_SOCKET);
-                worker.Subscribe(MessageEncoding.GetBytes(subscriberTopic));
+                // worker.Subscribe(MessageEncoding.GetBytes(subscriberTopic));
 
                 workerContext.NotifyStart.Set();
 
