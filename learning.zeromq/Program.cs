@@ -13,7 +13,7 @@ namespace learning.zeromq
         private const int ITERATIONS = 1000;
         private const int QUEUE_THREADS = 40;
 
-        static void Main(string[] args)
+        static void TestThroughput()
         {
             // zguide.asycnsrv.Program.Main(args);
 
@@ -71,6 +71,41 @@ namespace learning.zeromq
 
             Console.ReadKey();
 
+        }
+
+        static void TestTransactions()
+        {
+            TaskQueue q = new TaskQueue(1);
+
+            int exec_count = 0;
+
+            q.ActivityExecuted += (s, a) =>
+                {
+                    var threadId = Thread.CurrentThread.ManagedThreadId;
+
+                    var count = Interlocked.Increment(ref exec_count);
+
+                    var line = string.Format("Active: {0:D4}, Executed: {1:D4} >>> thread: {2},  Task --> {3}: '{4}' ==> {5} ", q.ActiveTasks, count, threadId, a.TaskId, a.GetType().Name, a.ToString());
+
+                    Debug.WriteLine(line);
+                    Console.WriteLine(line);
+
+                };
+
+            q.Start();
+
+            q.ExecuteTask(new Data.GetRecordCount("activity_db1"));
+            q.ExecuteTask(new Data.AddRecord("activity_db1") { Model = new Data.DbRecord() { Value = "test" } });
+            q.ExecuteTask(new Data.GetRecordCount("activity_db1"));
+
+            q.Shutdown(true);
+
+        }
+
+        static void Main(string[] args)
+        {
+            // TestThroughput();
+            TestTransactions();
         }
     }
 }

@@ -177,8 +177,17 @@ namespace learning.zeromq
             }
         }
 
-        public void Shutdown()
+        public void Shutdown(bool waitActiveTasks = false)
         {
+            if (waitActiveTasks)
+            {
+                while (this.ActiveTasks > 0)
+                {
+                    Thread.Sleep(5);
+                }
+
+            }
+
             lock (_lock)
             {
                 if (_queueContext != null)
